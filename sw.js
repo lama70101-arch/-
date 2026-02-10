@@ -1,9 +1,10 @@
-const CACHE_NAME = 'calendar-diary-v1';
+const CACHE_NAME = 'calendar-diary-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  'https://cdn.jsdelivr.net/npm/lunar-javascript/lunar.js'
+  './lunar.js',
+  './icon.png'
 ];
 
 // Install Event: Cache core assets
