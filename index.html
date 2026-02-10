@@ -176,7 +176,10 @@
 
         .weekdays {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            /* Force equal width */
+            gap: 5px;
+            /* Added to match days-grid */
             text-align: center;
             font-weight: bold;
             margin-bottom: 5px;
@@ -186,7 +189,8 @@
 
         .days-grid {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            /* Force equal width */
             gap: 5px;
             padding-bottom: 80px;
         }
@@ -203,6 +207,8 @@
             position: relative;
             cursor: pointer;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            /* Prevent expansion */
         }
 
         .day-cell.today {
@@ -226,13 +232,16 @@
         }
 
         .lunar-date {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            /* Slightly smaller */
             color: var(--text-sub);
             text-align: center;
             line-height: 1.1;
             overflow: hidden;
             text-overflow: ellipsis;
+            /* Add ... if too long */
             white-space: nowrap;
+            /* Keep single line */
             width: 100%;
             top: 2px;
         }
@@ -484,6 +493,80 @@
             padding: 15px;
             border-radius: 10px;
         }
+
+        /* TODO LIST STYLES */
+        .todo-list-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            border: 1px solid #eee;
+            border-radius: 12px;
+            padding: 10px;
+            background: #fafafa;
+        }
+
+        .todo-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .todo-checkbox {
+            margin-top: 6px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .todo-text {
+            flex: 1;
+            font-size: 1.1rem;
+            line-height: 1.4;
+            outline: none;
+            min-height: 24px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .todo-del {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 5px;
+        }
+
+        .todo-del:hover {
+            color: #ff4757;
+        }
+
+        /* Dynamic Dots */
+        .dots-container {
+            display: flex;
+            gap: 2px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: auto;
+            margin-bottom: 4px;
+            max-width: 100%;
+            padding: 0 2px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+        }
+
+        /* Remove old simple dot style */
+        .has-diary-dot {
+            display: none;
+        }
     </style>
 </head>
 
@@ -548,10 +631,12 @@
                 </div>
                 <button class="btn-close" onclick="closeModal()">✕</button>
             </div>
-            <textarea id="diaryInput" placeholder="點擊此處輸入記事... 例如：下午兩點開會、晚上買年菜"></textarea>
-            <div class="btn-group">
-                <button class="btn-danger" onclick="deleteDiary()">刪除</button>
-                <button class="btn-primary" onclick="saveDiary()">儲存記事</button>
+            <div id="todoList" class="todo-list-container">
+                <!-- Items will be injected here -->
+            </div>
+            <div class="add-item-row" style="text-align: right;">
+                <button class="btn-primary" onclick="addTodo()" style="padding: 8px 16px; font-size: 0.9rem;">+
+                    新增記事</button>
             </div>
         </div>
     </div>
@@ -580,7 +665,7 @@
             labelLunarMonth: document.getElementById('labelLunarMonth'),
 
             diaryModal: document.getElementById('diaryModal'),
-            diaryInput: document.getElementById('diaryInput'),
+            // diaryInput: document.getElementById('diaryInput'), // Removed
             modalDateStr: document.getElementById('modalDateStr'),
             modalLunarStr: document.getElementById('modalLunarStr'),
             menuPopover: document.getElementById('menuPopover'),
@@ -605,34 +690,88 @@
 
         // --- Logic ---
 
+        // --- Helpers ---
+
+        function toTraditional(str) {
+            if (!str) return '';
+            const map = {
+                '腊': '臘', '闰': '閏', '马': '馬', '鸡': '雞', '猪': '豬', '龙': '龍',
+                '节': '節', '气': '氣', '贝': '貝', '风': '風', '国': '國', '庆': '慶',
+                '动': '動', '劳': '勞', '开': '開', '关': '關', '门': '門', '户': '戶',
+                '妇': '婦', '产': '產', '会': '會', '万': '萬', '历': '曆', '阳': '陽',
+                '阴': '陰', '发': '發', '财': '財', '神': '神', '圣': '聖', '诞': '誕',
+                '纪': '紀', '念': '念', '和': '和', '平': '平', '台': '臺', '湾': '灣',
+                '宝': '寶', '岛': '島'
+            };
+            return str.split('').map(c => map[c] || c).join('');
+        }
+
+        function getCustomFestival(sM, sD, lM, lD) {
+            // Solar Holidays (Fixed)
+            if (sM === 1 && sD === 1) return '元旦';
+            if (sM === 2 && sD === 28) return '和平紀念日';
+            if (sM === 4 && sD === 4) return '兒童節'; // 4/4 fixed for simplicity
+            if (sM === 5 && sD === 1) return '勞動節';
+            if (sM === 10 && sD === 10) return '國慶日';
+            if (sM === 12 && sD === 25) return '聖誕節';
+
+            // Lunar Holidays
+            if (lM === 1 && lD === 1) return '春節';
+            if (lM === 1 && lD === 15) return '元宵節';
+            if (lM === 5 && lD === 5) return '端午節';
+            if (lM === 7 && lD === 7) return '七夕';
+            if (lM === 7 && lD === 15) return '中元節';
+            if (lM === 8 && lD === 15) return '中秋節';
+            if (lM === 9 && lD === 9) return '重陽節';
+            if (lM === 12 && lD === 8) return '臘八';
+            if (lM === 12 && lD === 24) return '送神';
+            // 除夕 (Simply checking 12/30 or 12/29 is complex without next day check, skipping for stability)
+
+            return '';
+        }
+
         function getLunarInfo(date) {
             if (typeof Lunar === 'undefined') return { text: '', full: '' };
 
             try {
                 const d = Lunar.fromDate(date);
-                const dayText = d.getDayInChinese();
-                const monthText = d.getMonthInChinese();
-                const yearText = d.getYearInGanZhi();
-                const zodiac = d.getYearShengXiao();
+
+                // Native Lunar.js Outputs
+                let dayText = toTraditional(d.getDayInChinese());
+                let monthText = toTraditional(d.getMonthInChinese());
+                let yearText = toTraditional(d.getYearInGanZhi());
+                let zodiac = toTraditional(d.getYearShengXiao());
+                let jieQi = toTraditional(d.getJieQi());
+
+                // Custom Logic
+                const sM = date.getMonth() + 1;
+                const sD = date.getDate();
+                const lM = d.getMonth();
+                const lD = d.getDay();
+
+                const customFest = getCustomFestival(sM, sD, lM, lD);
 
                 let showText = dayText;
-                const jieQi = d.getJieQi();
-                const festivals = d.getFestivals();
                 let isTerm = false;
 
-                if (jieQi) {
+                if (customFest) {
+                    showText = customFest;
+                    isTerm = true; // Highlight
+                } else if (jieQi) {
                     showText = jieQi;
-                    isTerm = true;
-                } else if (festivals.length > 0) {
-                    showText = festivals[0];
                     isTerm = true;
                 } else if (dayText === '初一') {
                     showText = monthText + '月';
                 }
 
+                // Append full string
+                let fullStr = `${yearText}年(${zodiac}) 農曆${monthText}月${dayText}`;
+                if (jieQi) fullStr += ` • ${jieQi}`;
+                if (customFest) fullStr += ` • ${customFest}`;
+
                 return {
                     text: showText,
-                    full: `${yearText}年(${zodiac}) 農曆${monthText}月${dayText} ` + (jieQi ? `• ${jieQi}` : ''),
+                    full: fullStr,
                     isTerm: isTerm
                 };
             } catch (e) {
@@ -656,10 +795,10 @@
                 const d2 = new Date(y, m + 1, 0);
                 const l2 = Lunar.fromDate(d2);
 
-                const startLunar = l1.getMonthInChinese();
-                const endLunar = l2.getMonthInChinese();
-                const yearGanZhi = l1.getYearInGanZhi(); // e.g. 丙午
-                const zodiac = l1.getYearShengXiao();    // e.g. 馬
+                const startLunar = toTraditional(l1.getMonthInChinese());
+                const endLunar = toTraditional(l2.getMonthInChinese());
+                const yearGanZhi = toTraditional(l1.getYearInGanZhi()); // e.g. 丙午
+                const zodiac = toTraditional(l1.getYearShengXiao());    // e.g. 馬
 
                 // Lunar Year Display
                 elements.labelLunarYear.innerText = `${yearGanZhi}年 / ${zodiac}`;
@@ -718,10 +857,54 @@
             if (!isOtherMonth && dateObj) {
                 const iso = toISO(dateObj);
                 const lunar = getLunarInfo(dateObj);
-                const hasDiary = localStorage.getItem('diary_' + iso);
+
+                // Get dots count
+                const raw = localStorage.getItem('diary_' + iso);
+                let items = [];
+                if (raw) {
+                    if (raw.startsWith('[')) {
+                        try { items = JSON.parse(raw); } catch (e) { }
+                    } else {
+                        items = [{ done: false }]; // Old format count as 1
+                    }
+                }
+
+                // Count ONLY UNFINISHED items for dots? Or all? 
+                // User said: "紅點會隨我記事多寡出現紅點" (Red dots appear according to amount of notes). It implies count of notes.
+                // Usually todo apps show dots for *unfinished* tasks or just existence.
+                // Re-reading: "如果我只有一件事就一個紅點-有五件事就五個紅點"
+                // I will render dots for ALL items, but maybe diff color for done? 
+                // Let's stick to simple: Dot = Item. 
+                // Wait, if I finish a task, should the dot go away? "儲存之後...有紅點"
+                // Let's assume Dot = Valid Task.
 
                 content += `<div class="lunar-date ${lunar.isTerm ? 'term-active' : ''}">${lunar.text}</div>`;
-                if (hasDiary) content += `<div class="has-diary-dot"></div>`;
+
+                if (items.length > 0) {
+                    content += `<div class="dots-container">`;
+                    // Limit to e.g. 10 to avoid overflow
+                    const count = Math.min(items.length, 12);
+                    for (let i = 0; i < count; i++) {
+                        // Check if done
+                        const isDone = items[i].done;
+                        // User didn't specify color for done, but usually done = less visible or green?
+                        // User said: "紅點 (Red Point)". 
+                        // Implementation: Red dot for all, maybe opacity for done if needed, but current req is just "dots count".
+                        // OPTIONAL IMPROVEMENT: Only show RED dots for unfinished, and maybe GREY for finished?
+                        // Let's keep it simple as requested: Red dots = Item count. 
+                        // Actually, standard UI: Dot usually means "Something here". 
+                        // Let's make it: Unfinished = Red Item, Finished = Hollow or Grey? 
+                        // "有五件事就五個紅點" -> 5 Red Dots. 
+
+                        // Update: To help user distinguish, I will make done items slightly transparent or different style if I can, 
+                        // but to strictly follow "Red Dot", I will use Red.
+                        // However, for better UX: if done, maybe a green dot? 
+                        // I'll stick to Red for now as requested.
+
+                        content += `<div class="dot" style="${isDone ? 'opacity: 0.3; background-color: #aaa' : ''}"></div>`;
+                    }
+                    content += `</div>`;
+                }
 
                 const dayOfWeek = dateObj.getDay();
                 if (dayOfWeek === 0 || dayOfWeek === 6) div.classList.add('weekend');
@@ -753,36 +936,128 @@
             elements.modalDateStr.innerText = `${y}年 ${m}月 ${d}日 (星期${weekMap[date.getDay()]})`;
             elements.modalLunarStr.innerText = lunarFullText;
 
-            elements.diaryInput.value = localStorage.getItem('diary_' + selectedDateISO) || '';
+            // Load items
+            renderTodoList();
             elements.diaryModal.classList.add('active');
         }
 
-        function saveDiary() {
-            if (!selectedDateISO) return;
-            const text = elements.diaryInput.value.trim();
-            if (text) {
-                localStorage.setItem('diary_' + selectedDateISO, text);
-            } else {
-                localStorage.removeItem('diary_' + selectedDateISO);
-            }
-            closeModal();
-            renderCalendar();
+        // --- Todo List Logic ---
 
-            const todayISO = toISO(new Date());
-            if (selectedDateISO === todayISO) checkTodayReminder();
+        function getTodoItems(isoDate) {
+            const raw = localStorage.getItem('diary_' + isoDate);
+            if (!raw) return [];
+
+            // Migration: If string doesn't start with '[', treat as old plain text
+            if (!raw.startsWith('[')) {
+                return [{ id: Date.now(), text: raw, done: false }];
+            }
+
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                return [{ id: Date.now(), text: raw, done: false }];
+            }
         }
 
-        function deleteDiary() {
-            if (!selectedDateISO) return;
-            if (confirm('確定刪除此記事嗎？')) {
-                localStorage.removeItem('diary_' + selectedDateISO);
-                closeModal();
-                renderCalendar();
+        function saveTodoItems(isoDate, items) {
+            if (!items || items.length === 0) {
+                localStorage.removeItem('diary_' + isoDate);
+            } else {
+                localStorage.setItem('diary_' + isoDate, JSON.stringify(items));
             }
+            renderCalendar(); // Refresh dots
+        }
+
+        function renderTodoList() {
+            const listContainer = document.getElementById('todoList');
+            if (!listContainer) {
+                // Should not happen if HTML is correct, but safe check
+                return;
+            }
+            listContainer.innerHTML = '';
+
+            const items = getTodoItems(selectedDateISO);
+
+            items.forEach(item => {
+                const li = document.createElement('div');
+                li.className = 'todo-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = item.done;
+                checkbox.className = 'todo-checkbox';
+                checkbox.onchange = () => toggleItem(item.id);
+
+                const text = document.createElement('div');
+                text.className = 'todo-text';
+                text.contentEditable = true;
+                text.innerText = item.text;
+                text.onblur = (e) => updateItemText(item.id, e.target.innerText);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'todo-del';
+                delBtn.innerText = '✕';
+                delBtn.onclick = () => deleteItem(item.id);
+
+                li.appendChild(checkbox);
+                li.appendChild(text);
+                li.appendChild(delBtn);
+                listContainer.appendChild(li);
+            });
+        }
+
+        function addTodo() {
+            if (!selectedDateISO) return;
+            const items = getTodoItems(selectedDateISO);
+            items.push({ id: Date.now(), text: '', done: false });
+            saveTodoItems(selectedDateISO, items);
+            renderTodoList();
+
+            // Focus new item
+            setTimeout(() => {
+                const list = document.getElementById('todoList');
+                const lastItem = list.lastElementChild;
+                if (lastItem) {
+                    const textBox = lastItem.querySelector('.todo-text');
+                    textBox.focus();
+                }
+            }, 50);
+        }
+
+        function toggleItem(id) {
+            if (!selectedDateISO) return;
+            const items = getTodoItems(selectedDateISO);
+            const target = items.find(i => i.id === id);
+            if (target) {
+                target.done = !target.done;
+                saveTodoItems(selectedDateISO, items);
+            }
+        }
+
+        function updateItemText(id, newText) {
+            if (!selectedDateISO) return;
+            const items = getTodoItems(selectedDateISO);
+            const target = items.find(i => i.id === id);
+            if (target) {
+                target.text = newText;
+                saveTodoItems(selectedDateISO, items);
+            }
+        }
+
+        function deleteItem(id) {
+            if (!selectedDateISO) return;
+            // Confirmation logic added as requested
+            if (!confirm('確定要刪除這個記事嗎？')) return;
+
+            let items = getTodoItems(selectedDateISO);
+            items = items.filter(i => i.id !== id);
+            saveTodoItems(selectedDateISO, items);
+            renderTodoList();
         }
 
         function closeModal() {
             elements.diaryModal.classList.remove('active');
+            selectedDateISO = null;
         }
 
         function toggleMenu() {
@@ -793,11 +1068,45 @@
         document.getElementById('nextMonth').onclick = () => { displayDate.setMonth(displayDate.getMonth() + 1); renderCalendar(); };
         function goToToday() { displayDate = new Date(); renderCalendar(); }
 
+        // --- Reminders ---
+
         function checkTodayReminder() {
             const todayISO = toISO(new Date());
-            const task = localStorage.getItem('diary_' + todayISO);
-            if (task) {
-                elements.reminderText.innerText = task;
+            const todayDate = new Date(todayISO);
+
+            let unfinishedTasks = [];
+
+            // Scan all storge
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('diary_')) {
+                    const dateStr = key.replace('diary_', '');
+                    const itemDate = new Date(dateStr);
+
+                    // Specific check: Date is STRICTLY BEFORE today
+                    if (itemDate < todayDate) {
+                        const items = getTodoItems(dateStr);
+                        const panding = items.filter(t => !t.done);
+                        if (panding.length > 0) {
+                            unfinishedTasks.push({ date: dateStr, count: panding.length, tasks: panding });
+                        }
+                    }
+                }
+            }
+
+            if (unfinishedTasks.length > 0) {
+                let msg = '';
+                unfinishedTasks.sort((a, b) => new Date(b.date) - new Date(a.date)); // Newest first
+
+                unfinishedTasks.forEach(g => {
+                    msg += `📅 ${g.date} 有 ${g.count} 件未完成:\n`;
+                    g.tasks.forEach(t => {
+                        msg += `  - ${t.text.substring(0, 15)}${t.text.length > 15 ? '...' : ''}\n`;
+                    });
+                    msg += '\n';
+                });
+
+                elements.reminderText.innerText = msg;
                 elements.reminderOverlay.classList.add('active');
             }
         }
