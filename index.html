@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>萬年曆日記</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#4a90e2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <!-- Fix for Electron: Hide module to force UMD to fallback to window -->
+    <script>if (typeof module === 'object') { window.module = module; module = undefined; }</script>
+    <!-- Load local script -->
+    <script src="./lunar.js"></script>
+    <!-- Restore module -->
+    <script>if (window.module) module = window.module;</script>
+
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --accent-color: #ff6b6b;
+            --bg-color: #f0f2f5;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --text-main: #333;
+            --text-sub: #666;
+            --border-radius: 12px;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #121212;
+                --card-bg: rgba(30, 30, 30, 0.95);
+                --text-main: #e0e0e0;
+                --text-sub: #aaaaaa;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* HEADER DESIGN */
+        header {
+            background: var(--card-bg);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 10;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            font-size: 1.8rem;
+            color: var(--text-main);
+            cursor: pointer;
+            padding: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Container for the 3 info blocks */
+        .header-info {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        /* Individual blocks */
+        .info-block {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* Left: West/Minguo */
+        .info-left {
+            align-items: flex-end;
+            text-align: right;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            font-weight: bold;
+            min-width: 100px;
+        }
+
+        .info-left span {
+            display: block;
+        }
+
+        .info-left .sub-text {
+            font-size: 0.75rem;
+            color: var(--text-sub);
+            font-weight: normal;
+        }
+
+        /* Center: Month */
+        .info-center {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--text-main);
+            line-height: 1;
+        }
+
+        /* Right: Lunar Year/Month */
+        .info-right {
+            align-items: flex-start;
+            text-align: left;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            font-weight: bold;
+            min-width: 100px;
+        }
+
+        .info-right span {
+            display: block;
+        }
+
+        .info-right .sub-text {
+            font-size: 0.75rem;
+            color: var(--text-sub);
+            font-weight: normal;
+        }
+
+        /* Mobile Response: Stack or Shrink */
+        @media (max-width: 500px) {
+            .header-info {
+                gap: 10px;
+            }
+
+            .info-left,
+            .info-right {
+                font-size: 0.75rem;
+                min-width: auto;
+            }
+
+            .info-center {
+                font-size: 1.8rem;
+            }
+
+            .nav-btn {
+                font-size: 1.2rem;
+                padding: 0 5px;
+            }
+        }
+
+        /* CALENDAR BODY */
+        .calendar-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--text-sub);
+            font-size: 0.9rem;
+        }
+
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            padding-bottom: 80px;
+        }
+
+        .day-cell {
+            background: var(--card-bg);
+            border-radius: 8px;
+            height: 85px;
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            position: relative;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .day-cell.today {
+            border: 2px solid var(--primary-color);
+        }
+
+        .day-cell.selected {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .day-cell.selected .lunar-date,
+        .day-cell.selected .term-active {
+            color: white !important;
+        }
+
+        .solar-date {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .lunar-date {
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            text-align: center;
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            width: 100%;
+            top: 2px;
+        }
+
+        .term-active {
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+
+        .has-diary-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            margin-top: auto;
+            margin-bottom: 4px;
+        }
+
+        .weekend {
+            color: var(--accent-color);
+        }
+
+        .other-month {
+            opacity: 0.3;
+        }
+
+        /* MODAL & DIALOGS */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+
+        @media(min-width: 600px) {
+            .modal {
+                align-items: center;
+            }
+
+            .modal-content {
+                border-radius: 16px;
+                width: 500px;
+                height: 600px;
+                max-height: 90vh;
+            }
+        }
+
+        .modal.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            width: 100%;
+            height: 85vh;
+            border-radius: 20px 20px 0 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .modal.active .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            padding-bottom: 15px;
+        }
+
+        .modal-title h2 {
+            margin: 0;
+            font-size: 1.4rem;
+        }
+
+        .modal-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-sub);
+            margin-top: 4px;
+        }
+
+        textarea {
+            width: 100%;
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 12px;
+            padding: 15px;
+            font-size: 1.1rem;
+            line-height: 1.5;
+            background: rgba(255, 255, 255, 0.8);
+            color: var(--text-main);
+            resize: none;
+            outline: none;
+            margin-bottom: 15px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        button {
+            padding: 12px 24px;
+            border-radius: 12px;
+            border: none;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-danger {
+            background: #ff4757;
+            color: white;
+        }
+
+        .btn-close {
+            background: #f1f2f6;
+            color: #333;
+        }
+
+        /* FAB */
+        .fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 56px;
+            height: 56px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 500;
+        }
+
+        .menu-popover {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            padding: 10px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 499;
+        }
+
+        .menu-popover.show {
+            display: flex;
+        }
+
+        .menu-item {
+            background: none;
+            border: none;
+            padding: 10px 15px;
+            text-align: left;
+            font-size: 1rem;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .menu-item:hover {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+        }
+
+        /* Reminder Alert */
+        .reminder-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .reminder-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .reminder-box {
+            background: white;
+            width: 85%;
+            max-width: 400px;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+
+        .reminder-overlay.active .reminder-box {
+            transform: scale(1);
+        }
+
+        .reminder-title {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .reminder-text {
+            font-size: 1.1rem;
+            color: #333;
+            margin-bottom: 20px;
+            line-height: 1.5;
+            text-align: left;
+            white-space: pre-wrap;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <button class="nav-btn" id="prevMonth">❮</button>
+        <div class="header-info">
+            <!-- LEFT: Gregorian / Minguo -->
+            <div class="info-block info-left" id="labelLeft">
+                <span id="labelGregorian">2026年</span>
+                <span id="labelMinguo" class="sub-text">民國 115 年</span>
+            </div>
+
+            <!-- CENTER: Month -->
+            <div class="info-block info-center" id="labelMonth">
+                2月
+            </div>
+
+            <!-- RIGHT: Lunar Year / Month -->
+            <div class="info-block info-right" id="labelRight">
+                <span id="labelLunarYear">丙午年</span>
+                <span id="labelLunarMonth" class="sub-text">臘月 - 正月</span>
+            </div>
+        </div>
+        <button class="nav-btn" id="nextMonth">❯</button>
+    </header>
+
+    <div style="text-align: center; padding: 5px;">
+        <button class="menu-item" onclick="goToToday()"
+            style="background: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); border-radius: 20px; padding: 5px 20px; display: inline-block;">回到今天</button>
+    </div>
+
+    <div class="calendar-container" id="swipeArea">
+        <div class="weekdays">
+            <div class="weekend">日</div>
+            <div>一</div>
+            <div>二</div>
+            <div>三</div>
+            <div>四</div>
+            <div>五</div>
+            <div class="weekend">六</div>
+        </div>
+        <div class="days-grid" id="daysGrid"></div>
+    </div>
+
+    <!-- FAB & Menu -->
+    <div class="fab" onclick="toggleMenu()">+</div>
+    <div class="menu-popover" id="menuPopover">
+        <button class="menu-item" onclick="exportData()">📤 匯出備份 (JSON)</button>
+        <button class="menu-item" onclick="document.getElementById('importFile').click()">📥 匯入資料</button>
+        <input type="file" id="importFile" hidden accept=".json" onchange="importData(this)">
+    </div>
+
+    <!-- Editor Modal -->
+    <div class="modal" id="diaryModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h2 id="modalDateStr">日期</h2>
+                    <div class="modal-subtitle" id="modalLunarStr">農曆資訊</div>
+                </div>
+                <button class="btn-close" onclick="closeModal()">✕</button>
+            </div>
+            <textarea id="diaryInput" placeholder="點擊此處輸入記事... 例如：下午兩點開會、晚上買年菜"></textarea>
+            <div class="btn-group">
+                <button class="btn-danger" onclick="deleteDiary()">刪除</button>
+                <button class="btn-primary" onclick="saveDiary()">儲存記事</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Reminder Alert -->
+    <div class="reminder-overlay" id="reminderOverlay">
+        <div class="reminder-box">
+            <div class="reminder-title">📅 今日待辦事項</div>
+            <div class="reminder-text" id="reminderText"></div>
+            <button class="btn-primary" style="width: 100%" onclick="closeReminder()">收到了</button>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let displayDate = new Date();
+        let selectedDateISO = null; // YYYY-MM-DD
+
+        // DOM Elements
+        const elements = {
+            daysGrid: document.getElementById('daysGrid'),
+            labelGregorian: document.getElementById('labelGregorian'),
+            labelMinguo: document.getElementById('labelMinguo'),
+            labelMonth: document.getElementById('labelMonth'),
+            labelLunarYear: document.getElementById('labelLunarYear'),
+            labelLunarMonth: document.getElementById('labelLunarMonth'),
+
+            diaryModal: document.getElementById('diaryModal'),
+            diaryInput: document.getElementById('diaryInput'),
+            modalDateStr: document.getElementById('modalDateStr'),
+            modalLunarStr: document.getElementById('modalLunarStr'),
+            menuPopover: document.getElementById('menuPopover'),
+            reminderOverlay: document.getElementById('reminderOverlay'),
+            reminderText: document.getElementById('reminderText')
+        };
+
+        // Init
+        window.onload = () => {
+            renderCalendar();
+            registerSW();
+            checkTodayReminder();
+        };
+
+        function registerSW() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(() => console.log('Service Worker Registered'))
+                    .catch(err => console.error('SW Registration Fail', err));
+            }
+        }
+
+        // --- Logic ---
+
+        function getLunarInfo(date) {
+            if (typeof Lunar === 'undefined') return { text: '', full: '' };
+
+            try {
+                const d = Lunar.fromDate(date);
+                const dayText = d.getDayInChinese();
+                const monthText = d.getMonthInChinese();
+                const yearText = d.getYearInGanZhi();
+                const zodiac = d.getYearShengXiao();
+
+                let showText = dayText;
+                const jieQi = d.getJieQi();
+                const festivals = d.getFestivals();
+                let isTerm = false;
+
+                if (jieQi) {
+                    showText = jieQi;
+                    isTerm = true;
+                } else if (festivals.length > 0) {
+                    showText = festivals[0];
+                    isTerm = true;
+                } else if (dayText === '初一') {
+                    showText = monthText + '月';
+                }
+
+                return {
+                    text: showText,
+                    full: `${yearText}年(${zodiac}) 農曆${monthText}月${dayText} ` + (jieQi ? `• ${jieQi}` : ''),
+                    isTerm: isTerm
+                };
+            } catch (e) {
+                console.error('Lunar Error', e);
+                return { text: '', full: '' };
+            }
+        }
+
+        function renderCalendar() {
+            const y = displayDate.getFullYear();
+            const m = displayDate.getMonth();
+
+            // --- Header Update ---
+            elements.labelGregorian.innerText = `${y}年`;
+            elements.labelMinguo.innerText = `民國 ${y - 1911} 年`;
+            elements.labelMonth.innerText = `${m + 1}月`;
+
+            try {
+                const d1 = new Date(y, m, 1);
+                const l1 = Lunar.fromDate(d1);
+                const d2 = new Date(y, m + 1, 0);
+                const l2 = Lunar.fromDate(d2);
+
+                const startLunar = l1.getMonthInChinese();
+                const endLunar = l2.getMonthInChinese();
+                const yearGanZhi = l1.getYearInGanZhi(); // e.g. 丙午
+                const zodiac = l1.getYearShengXiao();    // e.g. 馬
+
+                // Lunar Year Display
+                elements.labelLunarYear.innerText = `${yearGanZhi}年 / ${zodiac}`;
+
+                // Lunar Month Display
+                let lunarStr = `農曆 ${startLunar}月`;
+                if (startLunar !== endLunar) {
+                    lunarStr += ` - ${endLunar}月`;
+                }
+                elements.labelLunarMonth.innerText = lunarStr;
+
+            } catch (e) {
+                console.error(e);
+                elements.labelLunarYear.innerText = '';
+                elements.labelLunarMonth.innerText = '';
+            }
+
+            elements.daysGrid.innerHTML = '';
+
+            // Grid
+            const firstDay = new Date(y, m, 1);
+            const lastDay = new Date(y, m + 1, 0);
+            const startDay = firstDay.getDay();
+            const totalDays = lastDay.getDate();
+
+            // Prev Month
+            const prevMonthLastDay = new Date(y, m, 0).getDate();
+            for (let i = 0; i < startDay; i++) {
+                const d = prevMonthLastDay - (startDay - 1 - i);
+                elements.daysGrid.appendChild(createCell(d, true));
+            }
+
+            // Current Month
+            const today = new Date();
+            for (let d = 1; d <= totalDays; d++) {
+                const currentDayDate = new Date(y, m, d);
+                const isToday = currentDayDate.toDateString() === today.toDateString();
+                elements.daysGrid.appendChild(createCell(d, false, currentDayDate, isToday));
+            }
+
+            // Next Month
+            const endDay = lastDay.getDay();
+            if (endDay < 6) {
+                for (let i = 1; i <= (6 - endDay); i++) {
+                    elements.daysGrid.appendChild(createCell(i, true));
+                }
+            }
+        }
+
+        function createCell(dayNum, isOtherMonth, dateObj = null, isToday = false) {
+            const div = document.createElement('div');
+            div.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`;
+
+            let content = `<div class="solar-date">${dayNum}</div>`;
+
+            if (!isOtherMonth && dateObj) {
+                const iso = toISO(dateObj);
+                const lunar = getLunarInfo(dateObj);
+                const hasDiary = localStorage.getItem('diary_' + iso);
+
+                content += `<div class="lunar-date ${lunar.isTerm ? 'term-active' : ''}">${lunar.text}</div>`;
+                if (hasDiary) content += `<div class="has-diary-dot"></div>`;
+
+                const dayOfWeek = dateObj.getDay();
+                if (dayOfWeek === 0 || dayOfWeek === 6) div.classList.add('weekend');
+
+                div.onclick = () => openEditor(dateObj, lunar.full);
+            } else {
+                content += `<div class="lunar-date">&nbsp;</div>`;
+            }
+
+            div.innerHTML = content;
+            return div;
+        }
+
+        // --- Interactions ---
+
+        function toISO(date) {
+            const offset = date.getTimezoneOffset();
+            date = new Date(date.getTime() - (offset * 60 * 1000));
+            return date.toISOString().split('T')[0];
+        }
+
+        function openEditor(date, lunarFullText) {
+            selectedDateISO = toISO(date);
+            const y = date.getFullYear();
+            const m = date.getMonth() + 1;
+            const d = date.getDate();
+            const weekMap = ['日', '一', '二', '三', '四', '五', '六'];
+
+            elements.modalDateStr.innerText = `${y}年 ${m}月 ${d}日 (星期${weekMap[date.getDay()]})`;
+            elements.modalLunarStr.innerText = lunarFullText;
+
+            elements.diaryInput.value = localStorage.getItem('diary_' + selectedDateISO) || '';
+            elements.diaryModal.classList.add('active');
+        }
+
+        function saveDiary() {
+            if (!selectedDateISO) return;
+            const text = elements.diaryInput.value.trim();
+            if (text) {
+                localStorage.setItem('diary_' + selectedDateISO, text);
+            } else {
+                localStorage.removeItem('diary_' + selectedDateISO);
+            }
+            closeModal();
+            renderCalendar();
+
+            const todayISO = toISO(new Date());
+            if (selectedDateISO === todayISO) checkTodayReminder();
+        }
+
+        function deleteDiary() {
+            if (!selectedDateISO) return;
+            if (confirm('確定刪除此記事嗎？')) {
+                localStorage.removeItem('diary_' + selectedDateISO);
+                closeModal();
+                renderCalendar();
+            }
+        }
+
+        function closeModal() {
+            elements.diaryModal.classList.remove('active');
+        }
+
+        function toggleMenu() {
+            elements.menuPopover.classList.toggle('show');
+        }
+
+        document.getElementById('prevMonth').onclick = () => { displayDate.setMonth(displayDate.getMonth() - 1); renderCalendar(); };
+        document.getElementById('nextMonth').onclick = () => { displayDate.setMonth(displayDate.getMonth() + 1); renderCalendar(); };
+        function goToToday() { displayDate = new Date(); renderCalendar(); }
+
+        function checkTodayReminder() {
+            const todayISO = toISO(new Date());
+            const task = localStorage.getItem('diary_' + todayISO);
+            if (task) {
+                elements.reminderText.innerText = task;
+                elements.reminderOverlay.classList.add('active');
+            }
+        }
+
+        function closeReminder() {
+            elements.reminderOverlay.classList.remove('active');
+        }
+
+        function exportData() {
+            const data = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k.startsWith('diary_')) data[k] = localStorage.getItem(k);
+            }
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `diary_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            toggleMenu();
+        }
+
+        function importData(input) {
+            const f = input.files[0];
+            if (!f) return;
+            const r = new FileReader();
+            r.onload = e => {
+                try {
+                    const d = JSON.parse(e.target.result);
+                    Object.keys(d).forEach(k => {
+                        if (k.startsWith('diary_')) localStorage.setItem(k, d[k]);
+                    });
+                    alert('匯入成功！');
+                    renderCalendar();
+                    toggleMenu();
+                } catch (zh) { alert('檔案錯誤'); }
+            };
+            r.readAsText(f);
+            toggleMenu();
+        }
+    </script>
+</body>
+
+</html>
